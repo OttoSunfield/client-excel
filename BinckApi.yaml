@@ -1,0 +1,302 @@
+name: Binck Realtime Quotes
+description: Connect to Binck API and get streaming quotes for indices.
+host: EXCEL
+api_set: {}
+script:
+  content: |
+    /*
+     * This is an example on how to use the Binck API in Excel.
+     * Showcase: Request a set of instruments and get streaming quotes.
+     *
+     * Documentation on the Excel API:
+     * https://docs.microsoft.com/en-us/office/dev/add-ins/reference/overview/excel-add-ins-reference-overview?view=office-js
+     * Token can be retrieved here: http://www.basement.nl/binck/demo.html
+     */
+
+    var apiUrl = "https://api.binck.com/api/v1";
+    var streamerUrl = "https://realtime.binck.com/stream/v1";
+    //var apiUrl = "https://api.sandbox.binck.com/api/v1";
+    //var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
+
+    var instruments;
+    var bearerToken;
+    var activeAcountNumber;
+    var connection;
+
+    function displayInstrumentList(data) {
+      var i;
+      var cellValuesArray = [];
+      var rowCount;
+      console.log("Instruments successfully retrieved:");
+      console.log(data);
+      instruments = data.instrumentsCollection.instruments;
+      for (i = 0; i < instruments.length; i += 1) {
+        // This is the list shown in column A:
+        cellValuesArray[cellValuesArray.length] = [instruments[i].name];
+      }
+      rowCount = cellValuesArray.length + 1; // Include header
+      return Excel.run(function(context) {
+        var indicesSheet = context.workbook.worksheets.getItemOrNullObject("Indices");
+        return context.sync().then(function() {
+          var optionsTable;
+          var range;
+          if (indicesSheet.isNullObject) {
+            // The worksheet doesn't exist - create
+            console.log("Create new worksheet with name 'Indices'");
+            indicesSheet = context.workbook.worksheets.add("Indices");
+            optionsTable = indicesSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
+            optionsTable.name = "instrumentsTable";
+            optionsTable.showBandedRows = false;
+            optionsTable.getHeaderRowRange().values = [["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
+            // Add names:
+            range = indicesSheet.getRange("A2..A" + rowCount);
+            range.values = cellValuesArray;
+            indicesSheet.getUsedRange().format.autofitColumns();
+            indicesSheet.getUsedRange().format.autofitRows();
+            indicesSheet.activate();
+          }
+          indicesSheet.activate(); // Bring to front
+        });
+      });
+    }
+
+    function requestInstrumentList() {
+      bearerToken = $("#idEdtBearerToken")
+        .val()
+        .toString();
+      activeAcountNumber = $("#idEdtAccountNumber")
+        .val()
+        .toString();
+      console.log("Requesting instrument list with account " + activeAcountNumber + " and token " + bearerToken);
+      $.ajax({
+        dataType: "json",
+        contentType: "application/json; charset=utf-8",
+        type: "GET",
+        // https://developers.binck.com/#operation--instruments-lists--id--get
+        url: apiUrl + "/instruments/lists/internationalIndices",
+        //url: apiUrl + "/instruments/lists/amsterdamAEXIndex",
+        //url: apiUrl + "/instruments/lists/newYorkDowJones30Index",
+        //url: apiUrl + "/instruments/lists/newYorkNASDAQ100Index",
+        timeout: 30 * 1000, // Timeout after 30 seconds.
+        data: {
+          accountNumber: activeAcountNumber
+        },
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: "Bearer " + bearerToken
+        },
+        success: displayInstrumentList,
+        error: function(jqXhr) {
+          console.error(jqXhr);
+        }
+      });
+    }
+
+    function tryCatch(callback) {
+      Promise.resolve()
+        .then(callback)
+        .catch(function(error) {
+          // Note: In a production add-in, you'd want to notify the user through your add-in's UI.
+          console.error(error);
+        });
+    }
+
+    function displayQuote(row, values) {
+      var firstColumn = "B";
+      return Excel.run(function(context) {
+        var indicesSheet = context.workbook.worksheets.getItem("Indices");
+        var range;
+        var rangeDesc;
+        var i;
+        indicesSheet.activate(); // Bring to front
+        for (i = 0; i < values.length; i += 1) {
+          // Update only cells which have new values:
+          if (values[i] !== undefined) {
+            rangeDesc = String.fromCharCode(firstColumn.charCodeAt(0) + i) + row;
+            range = indicesSheet.getRange(rangeDesc);
+            range.values = [[values[i]]];
+          }
+        }
+        return context.sync().catch(function(error) {
+          console.error(error);
+        });
+      });
+    }
+
+    function processQuoteUpdates(quoteMessagesObject) {
+      var quoteMessage;
+      var row;
+      var values = [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+      var i;
+      for (i = 0; i < instruments.length; i += 1) {
+        if (instruments[i].id === quoteMessagesObject.id) {
+          row = i + 2; // Zero based, skip header
+          break;
+        }
+      }
+      for (i = 0; i < quoteMessagesObject.qt.length; i += 1) {
+        quoteMessage = quoteMessagesObject.qt[i];
+        switch (quoteMessage.typ) {
+          case "lst":
+          case "thp":
+            values[0] = parseFloat(quoteMessage.prc); // Last
+            values[6] = new Date(quoteMessage.dt); // Date time
+            break;
+          case "opn":
+            values[3] = parseFloat(quoteMessage.prc); // Open
+            break;
+          case "cls":
+            values[4] = parseFloat(quoteMessage.prc); // Close
+            break;
+          case "hgh":
+            values[1] = parseFloat(quoteMessage.prc); // High
+            break;
+          case "low":
+            values[2] = parseFloat(quoteMessage.prc); // Low
+            break;
+          case "vol":
+            if (quoteMessage.vol !== 0) {
+              values[5] = parseInt(quoteMessage.vol, 10); // Cumulative volume
+            }
+            break;
+        }
+      }
+      Promise.resolve()
+        .then(function() {
+          displayQuote(row, values);
+        })
+        .catch(function(error) {
+          // Note: In a production add-in, you'd want to notify the user through your add-in's UI.
+          console.error(error);
+        });
+    }
+
+    function setupStreamerConnection() {
+      var options = {
+        // accessTokenFactory not called every request, so refresh token doesn't work.
+        // Waiting for bug fix https://github.com/aspnet/SignalR/pull/1880
+        accessTokenFactory: function() {
+          return bearerToken;
+        }
+      };
+      console.log("Setup streamer connection");
+      connection = new signalR.HubConnectionBuilder()
+        .withUrl(streamerUrl + "?accountNumber=" + activeAcountNumber, options)
+        .configureLogging(signalR.LogLevel.Information) // Use Trace for trouble shooting
+        .build();
+      console.log("Configure the callback for quote events");
+      connection.on("Quote", function(quoteMessagesObject) {
+        processQuoteUpdates(quoteMessagesObject);
+      });
+      console.log("Configure the callback for disconnect");
+      connection.onclose(function() {
+        console.log("The connection has been closed.");
+      });
+      console.log("Start connection");
+      connection
+        .start()
+        .then(function() {
+          var i;
+          var instrumentIdsArray = [];
+          for (i = 0; i < instruments.length; i += 1) {
+            instrumentIdsArray[instrumentIdsArray.length] = instruments[i].id;
+          }
+          console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
+          console.log(instrumentIdsArray);
+          connection
+            .invoke("SubscribeQuotes", activeAcountNumber, instrumentIdsArray, "TopOfBook")
+            .then(function(subscriptionResponse) {
+              console.log(subscriptionResponse);
+              if (subscriptionResponse.isSucceeded) {
+                console.log(
+                  "Quote subscribe succeeded, number of subscribed instruments is now: " + subscriptionResponse.subcount
+                );
+              } else {
+                console.error("Something went wrong. Is the accountNumber valid?");
+              }
+            })
+            .catch(function(error) {
+              console.error(error);
+            });
+        })
+        .catch(function(error) {
+          console.error(error);
+        });
+    }
+
+    function stopStreamingUpdates() {
+      connection.stop();
+    }
+
+    $("#idBtnGetIndices").click(() => tryCatch(requestInstrumentList));
+    $("#idBtnGetStream").click(() => tryCatch(setupStreamerConnection));
+    $("#idBtnStop").click(() => tryCatch(stopStreamingUpdates));
+  language: typescript
+template:
+  content: |-
+    <label>Token: Bearer
+      <input
+        id="idEdtBearerToken"
+        type="edit" 
+        value="YOUR BEARER TOKEN HERE" />
+    </label>
+    <br />
+    <label>Account number:
+      <input
+        id="idEdtAccountNumber"
+        type="edit"
+        class="ms-Edit"
+        value="YOUR ACCOUNT NUMBER HERE" />
+    </label>
+    <br />
+    <br />
+    <button id="idBtnGetIndices" class="ms-Button">
+        <span class="ms-Button-label">Get indices</span>
+    </button>
+    <br />
+    <br />
+    <button id="idBtnGetStream" class="ms-Button">
+        <span class="ms-Button-label">Get streaming quote updates</span>
+    </button><br />
+    <br />
+    <button id="idBtnStop" class="ms-Button">
+        <span class="ms-Button-label">Stop streaming updates</span>
+    </button>
+  language: html
+style:
+  content: |-
+    section.samples {
+        margin-top: 20px;
+    }
+
+    section.samples .ms-Button, section.setup .ms-Button {
+        display: block;
+        margin-bottom: 5px;
+        margin-left: 20px;
+        min-width: 80px;
+    }
+  language: css
+libraries: >-
+  https://appsforoffice.microsoft.com/lib/1/hosted/office.js
+
+  @types/office-js
+
+
+  https://unpkg.com/office-ui-fabric-js@1.5.0/dist/css/fabric.min.css
+
+  https://unpkg.com/office-ui-fabric-js@1.5.0/dist/css/fabric.components.min.css
+
+
+  core-js@2.4.1/client/core.min.js
+
+  @types/core-js
+
+
+  jquery@3.4.1
+
+  @types/jquery
+
+
+  //https://unpkg.com/@aspnet/signalr@1.1.4/dist/browser/signalr.js
+
+  https://unpkg.com/@aspnet/signalr@3.0.0-preview6.19307.2/dist/browser/signalr.js
