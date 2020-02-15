@@ -3,7 +3,7 @@ description: Connect to Binck API and get streaming quotes for indices.
 host: EXCEL
 api_set: {}
 script:
-  content: |
+  content: >
     /*
      * This is an example on how to use the Binck API in Excel.
      * Showcase: Request a set of instruments and get streaming quotes.
@@ -14,14 +14,24 @@ script:
      */
 
     var apiUrl = "https://api.binck.com/api/v1";
+
     var streamerUrl = "https://realtime.binck.com/stream/v1";
-    //var apiUrl = "https://api.sandbox.binck.com/api/v1";
-    //var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
+
+    // Developers can test software on sandbox using these URLs:
+
+    // var apiUrl = "https://api.sandbox.binck.com/api/v1";
+
+    // var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
+
 
     var instruments;
+
     var bearerToken;
+
     var activeAcountNumber;
+
     var connection;
+
 
     function displayInstrumentList(data) {
       var i;
@@ -60,46 +70,38 @@ script:
       });
     }
 
+
     function requestInstrumentList() {
-      bearerToken = $("#idEdtBearerToken")
-        .val()
-        .toString();
-      activeAcountNumber = $("#idEdtAccountNumber")
-        .val()
-        .toString();
-      console.log("Requesting instrument list with account " + activeAcountNumber + " and token " + bearerToken);
-      $.ajax({
-        dataType: "json",
-        contentType: "application/json; charset=utf-8",
-        type: "GET",
-        // https://developers.binck.com/#operation--instruments-lists--id--get
-        url: apiUrl + "/instruments/lists/internationalIndices",
-        //url: apiUrl + "/instruments/lists/amsterdamAEXIndex",
-        //url: apiUrl + "/instruments/lists/newYorkDowJones30Index",
-        //url: apiUrl + "/instruments/lists/newYorkNASDAQ100Index",
-        timeout: 30 * 1000, // Timeout after 30 seconds.
-        data: {
-          accountNumber: activeAcountNumber
-        },
-        headers: {
-          Accept: "application/json; charset=utf-8",
-          Authorization: "Bearer " + bearerToken
-        },
-        success: displayInstrumentList,
-        error: function(jqXhr) {
-          console.error(jqXhr);
+      bearerToken = document.getElementById("idEdtBearerToken").value;
+      activeAcountNumber = document.getElementById("idEdtAccountNumber").value;
+      console.log("Requesting instrument list for account " + activeAcountNumber + " with token " + bearerToken);
+
+      // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
+      // Other list is amsterdamAEXIndex, see documentation for more.
+      fetch(
+        apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber,
+        {
+          headers: {
+            Accept: "application/json; charset=utf-8",
+            Authorization: "Bearer " + bearerToken
+          }
         }
+      )
+      .then(function (response) {
+        if (!response.ok) {
+          console.error(response.statusText);
+        }
+        return response.json();
+      })
+      .then(function (jsonResponse) {
+        console.log(jsonResponse);
+        displayInstrumentList(jsonResponse);
+      })
+      .catch(function (error) {
+        console.log(error);
       });
     }
 
-    function tryCatch(callback) {
-      Promise.resolve()
-        .then(callback)
-        .catch(function(error) {
-          // Note: In a production add-in, you'd want to notify the user through your add-in's UI.
-          console.error(error);
-        });
-    }
 
     function displayQuote(row, values) {
       var firstColumn = "B";
@@ -122,6 +124,7 @@ script:
         });
       });
     }
+
 
     function processQuoteUpdates(quoteMessagesObject) {
       var quoteMessage;
@@ -170,6 +173,7 @@ script:
           console.error(error);
         });
     }
+
 
     function setupStreamerConnection() {
       var options = {
@@ -224,13 +228,20 @@ script:
         });
     }
 
+
     function stopStreamingUpdates() {
       connection.stop();
     }
 
-    $("#idBtnGetIndices").click(() => tryCatch(requestInstrumentList));
-    $("#idBtnGetStream").click(() => tryCatch(setupStreamerConnection));
-    $("#idBtnStop").click(() => tryCatch(stopStreamingUpdates));
+
+    document.getElementById("idBtnGetIndices").addEventListener("click",
+    requestInstrumentList);
+
+    document.getElementById("idBtnGetStream").addEventListener("click",
+    setupStreamerConnection);
+
+    document.getElementById("idBtnStop").addEventListener("click",
+    stopStreamingUpdates);
   language: typescript
 template:
   content: |-
@@ -276,7 +287,7 @@ style:
         min-width: 80px;
     }
   language: css
-libraries: >-
+libraries: >
   https://appsforoffice.microsoft.com/lib/1/hosted/office.js
 
   @types/office-js
@@ -292,11 +303,4 @@ libraries: >-
   @types/core-js
 
 
-  jquery@3.4.1
-
-  @types/jquery
-
-
-  //https://unpkg.com/@aspnet/signalr@1.1.4/dist/browser/signalr.js
-
-  https://unpkg.com/@aspnet/signalr@3.0.0-preview6.19307.2/dist/browser/signalr.js
+  https://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js
