@@ -3,35 +3,26 @@ description: Connect to Binck API and get streaming quotes for indices.
 host: EXCEL
 api_set: {}
 script:
-  content: >
+  content: |
     /*
      * This is an example on how to use the Binck API in Excel.
      * Showcase: Request a set of instruments and get streaming quotes.
      *
      * Documentation on the Excel API:
      * https://docs.microsoft.com/en-us/office/dev/add-ins/reference/overview/excel-add-ins-reference-overview?view=office-js
-     * Token can be retrieved here: http://www.basement.nl/binck/demo.html
+     * Token can be retrieved here: https://www.basement.nl/binck/demo.html
      */
 
     var apiUrl = "https://api.binck.com/api/v1";
-
     var streamerUrl = "https://realtime.binck.com/stream/v1";
-
     // Developers can test software on sandbox using these URLs:
-
     // var apiUrl = "https://api.sandbox.binck.com/api/v1";
-
     // var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
 
-
     var instruments;
-
     var bearerToken;
-
     var activeAcountNumber;
-
     var connection;
-
 
     function displayInstrumentList(data) {
       var i;
@@ -57,7 +48,8 @@ script:
             optionsTable = indicesSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
             optionsTable.name = "instrumentsTable";
             optionsTable.showBandedRows = false;
-            optionsTable.getHeaderRowRange().values = [["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
+            optionsTable.getHeaderRowRange().values = [
+              ["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
             // Add names:
             range = indicesSheet.getRange("A2..A" + rowCount);
             range.values = cellValuesArray;
@@ -70,23 +62,24 @@ script:
       });
     }
 
-
     function requestInstrumentList() {
       bearerToken = document.getElementById("idEdtBearerToken").value;
       activeAcountNumber = document.getElementById("idEdtAccountNumber").value;
-      console.log("Requesting instrument list for account " + activeAcountNumber + " with token " + bearerToken);
+      console.log(
+        "Requesting instrument list for account "
+        + activeAcountNumber
+        + " with token "
+        + bearerToken);
 
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
       fetch(
-        apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber,
-        {
-          headers: {
-            Accept: "application/json; charset=utf-8",
-            Authorization: "Bearer " + bearerToken
-          }
+        apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber, {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: "Bearer " + bearerToken
         }
-      )
+      })
       .then(function (response) {
         if (!response.ok) {
           console.error(response.statusText);
@@ -101,7 +94,6 @@ script:
         console.log(error);
       });
     }
-
 
     function displayQuote(row, values) {
       var firstColumn = "B";
@@ -125,11 +117,11 @@ script:
       });
     }
 
-
     function processQuoteUpdates(quoteMessagesObject) {
       var quoteMessage;
       var row;
-      var values = [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+      var values =
+        [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
       var i;
       for (i = 0; i < instruments.length; i += 1) {
         if (instruments[i].id === quoteMessagesObject.id) {
@@ -169,11 +161,10 @@ script:
           displayQuote(row, values);
         })
         .catch(function(error) {
-          // Note: In a production add-in, you'd want to notify the user through your add-in's UI.
+          // In a production add-in, you'd want to notify the user through your add-in's UI.
           console.error(error);
         });
     }
-
 
     function setupStreamerConnection() {
       var options = {
@@ -228,64 +219,45 @@ script:
         });
     }
 
-
     function stopStreamingUpdates() {
       connection.stop();
     }
 
-
-    document.getElementById("idBtnGetIndices").addEventListener("click",
-    requestInstrumentList);
-
-    document.getElementById("idBtnGetStream").addEventListener("click",
-    setupStreamerConnection);
-
-    document.getElementById("idBtnStop").addEventListener("click",
-    stopStreamingUpdates);
+    document.getElementById("idBtnGetIndices").addEventListener(
+      "click", requestInstrumentList);
+    document.getElementById("idBtnGetStream").addEventListener(
+      "click", setupStreamerConnection);
+    document.getElementById("idBtnStop").addEventListener(
+      "click", stopStreamingUpdates);
   language: typescript
 template:
   content: |-
     <label>Token: Bearer
       <input
         id="idEdtBearerToken"
-        type="edit" 
-        value="YOUR BEARER TOKEN HERE" />
+        type="text"
+        value="YOUR_BEARER_TOKEN_HERE" />
+      <a href="https://www.basement.nl/binck/demo.html" target="_blank">Get token</a>
     </label>
     <br />
     <label>Account number:
       <input
         id="idEdtAccountNumber"
-        type="edit"
-        class="ms-Edit"
-        value="YOUR ACCOUNT NUMBER HERE" />
+        type="text"
+        value="YOUR_ACCOUNT_NUMBER_HERE" />
     </label>
     <br />
     <br />
-    <button id="idBtnGetIndices" class="ms-Button">
-        <span class="ms-Button-label">Get indices</span>
-    </button>
+    <button id="idBtnGetIndices">Get indices</button>
     <br />
     <br />
-    <button id="idBtnGetStream" class="ms-Button">
-        <span class="ms-Button-label">Get streaming quote updates</span>
-    </button><br />
+    <button id="idBtnGetStream">Start streaming quotes</button>
     <br />
-    <button id="idBtnStop" class="ms-Button">
-        <span class="ms-Button-label">Stop streaming updates</span>
-    </button>
+    <br />
+    <button id="idBtnStop">Stop streaming updates</button>
   language: html
 style:
-  content: |-
-    section.samples {
-        margin-top: 20px;
-    }
-
-    section.samples .ms-Button, section.setup .ms-Button {
-        display: block;
-        margin-bottom: 5px;
-        margin-left: 20px;
-        min-width: 80px;
-    }
+  content: ''
   language: css
 libraries: >
   https://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js
