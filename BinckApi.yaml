@@ -17,8 +17,6 @@ script:
 
     var streamerUrl = "https://realtime.binck.com/stream/v1";
 
-    var tokenUrl = "https://www.basement.nl/binck/script-lab/token";
-
     // Developers can test software on sandbox using these URLs:
 
     // var apiUrl = "https://api.sandbox.binck.com/api/v1";
@@ -269,9 +267,6 @@ script:
 
     document.getElementById("idBtnStop").addEventListener("click",
     stopStreamingUpdates);
-
-
-    if ()
   language: typescript
 template:
   content: |-
@@ -302,5 +297,5 @@ template:
 style:
   content: ''
   language: css
-libraries: >
+libraries: >-
   https://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js
