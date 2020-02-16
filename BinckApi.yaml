@@ -3,7 +3,7 @@ description: Connect to Binck API and get streaming quotes for indices.
 host: EXCEL
 api_set: {}
 script:
-  content: |
+  content: >-
     /*
      * This is an example on how to use the Binck API in Excel.
      * Showcase: Request a set of instruments and get streaming quotes.
@@ -14,16 +14,32 @@ script:
      */
 
     var apiUrl = "https://api.binck.com/api/v1";
+
     var streamerUrl = "https://realtime.binck.com/stream/v1";
+
+    var tokenUrl = "https://www.basement.nl/binck/script-lab/token";
+
     // Developers can test software on sandbox using these URLs:
+
     // var apiUrl = "https://api.sandbox.binck.com/api/v1";
+
     // var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
 
+
     var instruments;
+
     var bearerToken;
+
     var activeAcountNumber;
+
     var connection;
 
+
+    /**
+     * This is an example of displaying instruments in Excel.
+     * @param {Object} data The response of the rest call.
+     * @return {void}
+     */
     function displayInstrumentList(data) {
       var i;
       var cellValuesArray = [];
@@ -48,8 +64,7 @@ script:
             optionsTable = indicesSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
             optionsTable.name = "instrumentsTable";
             optionsTable.showBandedRows = false;
-            optionsTable.getHeaderRowRange().values = [
-              ["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
+            optionsTable.getHeaderRowRange().values = [["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
             // Add names:
             range = indicesSheet.getRange("A2..A" + rowCount);
             range.values = cellValuesArray;
@@ -62,39 +77,46 @@ script:
       });
     }
 
+
+    /**
+     * This is an example of getting instruments from the Api. Instrument list is used, but this might as well be the positions or pending orders.
+     * @return {void}
+     */
     function requestInstrumentList() {
       bearerToken = document.getElementById("idEdtBearerToken").value;
       activeAcountNumber = document.getElementById("idEdtAccountNumber").value;
-      console.log(
-        "Requesting instrument list for account "
-        + activeAcountNumber
-        + " with token "
-        + bearerToken);
+      console.log("Requesting instrument list for account " + activeAcountNumber + " with token " + bearerToken);
 
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
-      fetch(
-        apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber, {
+      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber, {
         headers: {
           Accept: "application/json; charset=utf-8",
           Authorization: "Bearer " + bearerToken
         }
       })
-      .then(function (response) {
-        if (!response.ok) {
-          console.error(response.statusText);
-        }
-        return response.json();
-      })
-      .then(function (jsonResponse) {
-        console.log(jsonResponse);
-        displayInstrumentList(jsonResponse);
-      })
-      .catch(function (error) {
-        console.log(error);
-      });
+        .then(function(response) {
+          if (!response.ok) {
+            console.error(response.statusText);
+          }
+          return response.json();
+        })
+        .then(function(jsonResponse) {
+          console.log(jsonResponse);
+          displayInstrumentList(jsonResponse);
+        })
+        .catch(function(error) {
+          console.log(error);
+        });
     }
 
+
+    /**
+     * Update the price of an instrument.
+     * @param {number} row The row in the Excel grid.
+     * @param {Array[number]} values The new values for that row.
+     * @return {void}
+     */
     function displayQuote(row, values) {
       var firstColumn = "B";
       return Excel.run(function(context) {
@@ -117,11 +139,16 @@ script:
       });
     }
 
+
+    /**
+     * Parse incoming event and determine places to update.
+     * @param {Object} quoteMessagesObject The new prices.
+     * @return {void}
+     */
     function processQuoteUpdates(quoteMessagesObject) {
       var quoteMessage;
       var row;
-      var values =
-        [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+      var values = [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
       var i;
       for (i = 0; i < instruments.length; i += 1) {
         if (instruments[i].id === quoteMessagesObject.id) {
@@ -166,6 +193,11 @@ script:
         });
     }
 
+
+    /**
+     * Request a streaming connection for quote updates using signalR.
+     * @return {void}
+     */
     function setupStreamerConnection() {
       var options = {
         // accessTokenFactory not called every request, so refresh token doesn't work.
@@ -219,16 +251,27 @@ script:
         });
     }
 
+
+    /**
+     * Disconnect from the streamer. Per token, only one streaming connection is allowed, so it is important to disconnect.
+     * @return {void}
+     */
     function stopStreamingUpdates() {
       connection.stop();
     }
 
-    document.getElementById("idBtnGetIndices").addEventListener(
-      "click", requestInstrumentList);
-    document.getElementById("idBtnGetStream").addEventListener(
-      "click", setupStreamerConnection);
-    document.getElementById("idBtnStop").addEventListener(
-      "click", stopStreamingUpdates);
+
+    document.getElementById("idBtnGetIndices").addEventListener("click",
+    requestInstrumentList);
+
+    document.getElementById("idBtnGetStream").addEventListener("click",
+    setupStreamerConnection);
+
+    document.getElementById("idBtnStop").addEventListener("click",
+    stopStreamingUpdates);
+
+
+    if ()
   language: typescript
 template:
   content: |-
