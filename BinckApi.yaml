@@ -3,7 +3,7 @@ description: Connect to Binck API and get streaming quotes for indices.
 host: EXCEL
 api_set: {}
 script:
-  content: >-
+  content: >
     /*
      * This is an example on how to use the Binck API in Excel.
      * Showcase: Request a set of instruments and get streaming quotes.
@@ -17,6 +17,8 @@ script:
 
     var streamerUrl = "https://realtime.binck.com/stream/v1";
 
+    var serverUrl = "https://www.basement.nl/binck/server/token-excel.php";
+
     // Developers can test software on sandbox using these URLs:
 
     // var apiUrl = "https://api.sandbox.binck.com/api/v1";
@@ -28,9 +30,13 @@ script:
 
     var bearerToken;
 
-    var activeAcountNumber;
+    var bearerTokenRefreshTimer = null;
+
+    var activeAcountId;
 
     var connection;
+
+    var isConnectionActive = false;
 
 
     /**
@@ -50,9 +56,9 @@ script:
         cellValuesArray[cellValuesArray.length] = [instruments[i].name];
       }
       rowCount = cellValuesArray.length + 1; // Include header
-      return Excel.run(function(context) {
+      return Excel.run(function (context) {
         var indicesSheet = context.workbook.worksheets.getItemOrNullObject("Indices");
-        return context.sync().then(function() {
+        return context.sync().then(function () {
           var optionsTable;
           var range;
           if (indicesSheet.isNullObject) {
@@ -77,33 +83,118 @@ script:
 
 
     /**
+     * Extend the subscription of the streamer, when a new token is received.
+     * @return {void}
+     */
+    function refreshTokenOfStreamer() {
+      if (isConnectionActive) {
+        connection.invoke("ExtendSubscriptions", document.getElementById("idEdtBearerToken").value)
+          .then(function () {
+            console.log("Streamer subscription extended.");
+          })
+          .catch(function (error) {
+            console.error(error);
+          });
+      }
+    }
+
+
+    /**
+     * The realm is required for extending the session.
+     * @param {number} secondsFromNow token shuld be refreshed after this time (seconds).
+     * @return {string} Can be binckbeapi binckfrapi binckitapi bincknlapi.
+     */
+    function getRealm() {
+      console.log("Using realm bincknlapi.");
+      return "bincknlapi";
+    }
+
+
+    /**
+     * Tokens expire in general after one hour. If a refresh token is added, the token can be refreshed, for max. 24 hours.
+     * @param {number} secondsFromNow token shuld be refreshed after this time (seconds).
+     * @return {void}
+     */
+    function scheduleTokenRefresh(secondsFromNow) {
+      if (bearerTokenRefreshTimer === null) {
+        console.log("Setting refresh timer. Trigger in " + secondsFromNow + " seconds.");
+        // Do this only one time..
+        bearerTokenRefreshTimer = window.setTimeout(function () {
+          var data = {
+            "requestType": "refreshToken",
+            "realm": getRealm(),
+            "refreshToken": document.getElementById("idEdtRefreshToken").value
+          };
+          if (data.refreshToken === "") {
+            console.log("No refresh token found, so no token refresh can be requested.");
+          } else {
+            console.log((new Date()).toLocaleTimeString() + "Requesting token refresh..");
+            fetch(serverUrl, {
+              "headers": {
+                "Accept": "application/json; charset=utf-8",
+                "Content-Type": "application/json; charset=utf-8"
+              },
+              "body": JSON.stringify(data),
+              "method": "POST"
+            })
+              .then(function (response) {
+                if (!response.ok) {
+                  console.error(response);
+                }
+                return response.json();
+              })
+              .then(function (responseJson) {
+                console.log(responseJson);
+                document.getElementById("idEdtBearerToken").value = responseJson.access_token;
+                document.getElementById("idEdtRefreshToken").value = responseJson.refresh_token;
+                refreshTokenOfStreamer();
+                // Schedule next refresh one minute before new token expires:
+                scheduleTokenRefresh(responseJson.expires_in - 60);
+                console.log("Token has been refreshed.");
+              })
+              .catch(function (error) {
+                console.error(error);
+              });
+          }
+        }, secondsFromNow * 1000);
+      }
+    }
+
+
+    /**
      * This is an example of getting instruments from the Api. Instrument list is used, but this might as well be the positions or pending orders.
      * @return {void}
      */
     function requestInstrumentList() {
       bearerToken = document.getElementById("idEdtBearerToken").value;
-      activeAcountNumber = document.getElementById("idEdtAccountNumber").value;
-      console.log("Requesting instrument list for account " + activeAcountNumber + " with token " + bearerToken);
+      activeAcountId = document.getElementById("idEdtAccountId").value;
+      if (bearerToken === "" || activeAcountId === "") {
+        console.error("Bearer token and account ID must have a value");
+        return;
+      }
+      console.log("Requesting instrument list for account " + activeAcountId + " with token " + bearerToken);
 
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
-      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountNumber, {
-        headers: {
-          Accept: "application/json; charset=utf-8",
-          Authorization: "Bearer " + bearerToken
+      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountId, {
+        "headers": {
+          "Accept": "application/json; charset=utf-8",
+          "Authorization": "Bearer " + bearerToken
         }
       })
-        .then(function(response) {
+        .then(function (response) {
           if (!response.ok) {
             console.error(response.statusText);
           }
           return response.json();
         })
-        .then(function(jsonResponse) {
+        .then(function (jsonResponse) {
           console.log(jsonResponse);
           displayInstrumentList(jsonResponse);
+          // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
+          scheduleTokenRefresh(30 * 60);
         })
-        .catch(function(error) {
+        .catch(function (error) {
           console.log(error);
         });
     }
@@ -117,7 +208,7 @@ script:
      */
     function displayQuote(row, values) {
       var firstColumn = "B";
-      return Excel.run(function(context) {
+      return Excel.run(function (context) {
         var indicesSheet = context.workbook.worksheets.getItem("Indices");
         var range;
         var rangeDesc;
@@ -131,7 +222,7 @@ script:
             range.values = [[values[i]]];
           }
         }
-        return context.sync().catch(function(error) {
+        return context.sync().catch(function (error) {
           console.error(error);
         });
       });
@@ -182,10 +273,10 @@ script:
         }
       }
       Promise.resolve()
-        .then(function() {
+        .then(function () {
           displayQuote(row, values);
         })
-        .catch(function(error) {
+        .catch(function (error) {
           // In a production add-in, you'd want to notify the user through your add-in's UI.
           console.error(error);
         });
@@ -200,27 +291,28 @@ script:
       var options = {
         // accessTokenFactory not called every request, so refresh token doesn't work.
         // Waiting for bug fix https://github.com/aspnet/SignalR/pull/1880
-        accessTokenFactory: function() {
+        "accessTokenFactory": function () {
           return bearerToken;
         }
       };
       console.log("Setup streamer connection");
       connection = new signalR.HubConnectionBuilder()
-        .withUrl(streamerUrl + "?accountNumber=" + activeAcountNumber, options)
+        .withUrl(streamerUrl + "?accountNumber=" + activeAcountId, options)
         .configureLogging(signalR.LogLevel.Information) // Use Trace for trouble shooting
         .build();
       console.log("Configure the callback for quote events");
-      connection.on("Quote", function(quoteMessagesObject) {
+      connection.on("Quote", function (quoteMessagesObject) {
         processQuoteUpdates(quoteMessagesObject);
       });
       console.log("Configure the callback for disconnect");
-      connection.onclose(function() {
+      connection.onclose(function () {
+        isConnectionActive = false;
         console.log("The connection has been closed.");
       });
       console.log("Start connection");
       connection
         .start()
-        .then(function() {
+        .then(function () {
           var i;
           var instrumentIdsArray = [];
           for (i = 0; i < instruments.length; i += 1) {
@@ -229,22 +321,23 @@ script:
           console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
           console.log(instrumentIdsArray);
           connection
-            .invoke("SubscribeQuotes", activeAcountNumber, instrumentIdsArray, "TopOfBook")
-            .then(function(subscriptionResponse) {
+            .invoke("SubscribeQuotes", activeAcountId, instrumentIdsArray, "TopOfBook")
+            .then(function (subscriptionResponse) {
               console.log(subscriptionResponse);
               if (subscriptionResponse.isSucceeded) {
                 console.log(
                   "Quote subscribe succeeded, number of subscribed instruments is now: " + subscriptionResponse.subcount
                 );
+                isConnectionActive = true;
               } else {
-                console.error("Something went wrong. Is the accountNumber valid?");
+                console.error("Something went wrong. Is the account ID valid?");
               }
             })
-            .catch(function(error) {
+            .catch(function (error) {
               console.error(error);
             });
         })
-        .catch(function(error) {
+        .catch(function (error) {
           console.error(error);
         });
     }
@@ -274,15 +367,24 @@ template:
       <input
         id="idEdtBearerToken"
         type="text"
-        value="YOUR_BEARER_TOKEN_HERE" />
+        value=""
+        placeholder="Paste token here" />
       <a href="https://www.basement.nl/binck/demo.html" target="_blank">Get token</a>
     </label>
     <br />
-    <label>Account number:
+    <label>Refresh token:
       <input
-        id="idEdtAccountNumber"
+        id="idEdtRefreshToken"
         type="text"
-        value="YOUR_ACCOUNT_NUMBER_HERE" />
+        value=""
+        placeholder="Paste (optional) refresh token" />
+    </label>
+    <br /><label>Account ID:
+      <input
+        id="idEdtAccountId"
+        type="text"
+        value=""
+        placeholder="Enter account ID" />
     </label>
     <br />
     <br />
@@ -297,5 +399,4 @@ template:
 style:
   content: ''
   language: css
-libraries: >-
-  https://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js
+libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js"
