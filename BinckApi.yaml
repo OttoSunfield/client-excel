@@ -28,11 +28,7 @@ script:
 
     var instruments;
 
-    var bearerToken;
-
     var bearerTokenRefreshTimer = null;
-
-    var activeAcountId;
 
     var connection;
 
@@ -56,9 +52,9 @@ script:
         cellValuesArray[cellValuesArray.length] = [instruments[i].name];
       }
       rowCount = cellValuesArray.length + 1; // Include header
-      return Excel.run(function (context) {
+      return Excel.run(function(context) {
         var indicesSheet = context.workbook.worksheets.getItemOrNullObject("Indices");
-        return context.sync().then(function () {
+        return context.sync().then(function() {
           var optionsTable;
           var range;
           if (indicesSheet.isNullObject) {
@@ -88,11 +84,12 @@ script:
      */
     function refreshTokenOfStreamer() {
       if (isConnectionActive) {
-        connection.invoke("ExtendSubscriptions", document.getElementById("idEdtBearerToken").value)
-          .then(function () {
+        connection
+          .invoke("ExtendSubscriptions", document.getElementById("idEdtBearerToken").value)
+          .then(function() {
             console.log("Streamer subscription extended.");
           })
-          .catch(function (error) {
+          .catch(function(error) {
             console.error(error);
           });
       }
@@ -105,8 +102,10 @@ script:
      * @return {string} Can be binckbeapi binckfrapi binckitapi bincknlapi.
      */
     function getRealm() {
-      console.log("Using realm bincknlapi.");
-      return "bincknlapi";
+      var element = document.getElementById("idCbxCountry");
+      var realm = element.options[element.selectedIndex].value;
+      console.log("Using realm " + realm);
+      return realm;
     }
 
 
@@ -119,31 +118,31 @@ script:
       if (bearerTokenRefreshTimer === null) {
         console.log("Setting refresh timer. Trigger in " + secondsFromNow + " seconds.");
         // Do this only one time..
-        bearerTokenRefreshTimer = window.setTimeout(function () {
+        bearerTokenRefreshTimer = window.setTimeout(function() {
           var data = {
-            "requestType": "refreshToken",
-            "realm": getRealm(),
-            "refreshToken": document.getElementById("idEdtRefreshToken").value
+            requestType: "refreshToken",
+            realm: getRealm(),
+            refreshToken: document.getElementById("idEdtRefreshToken").value
           };
           if (data.refreshToken === "") {
             console.log("No refresh token found, so no token refresh can be requested.");
           } else {
-            console.log((new Date()).toLocaleTimeString() + "Requesting token refresh..");
+            console.log(new Date().toLocaleTimeString() + " - Requesting token refresh..");
             fetch(serverUrl, {
-              "headers": {
-                "Accept": "application/json; charset=utf-8",
+              headers: {
+                Accept: "application/json; charset=utf-8",
                 "Content-Type": "application/json; charset=utf-8"
               },
-              "body": JSON.stringify(data),
-              "method": "POST"
+              body: JSON.stringify(data),
+              method: "POST"
             })
-              .then(function (response) {
+              .then(function(response) {
                 if (!response.ok) {
                   console.error(response);
                 }
                 return response.json();
               })
-              .then(function (responseJson) {
+              .then(function(responseJson) {
                 console.log(responseJson);
                 document.getElementById("idEdtBearerToken").value = responseJson.access_token;
                 document.getElementById("idEdtRefreshToken").value = responseJson.refresh_token;
@@ -152,7 +151,7 @@ script:
                 scheduleTokenRefresh(responseJson.expires_in - 60);
                 console.log("Token has been refreshed.");
               })
-              .catch(function (error) {
+              .catch(function(error) {
                 console.error(error);
               });
           }
@@ -166,35 +165,35 @@ script:
      * @return {void}
      */
     function requestInstrumentList() {
-      bearerToken = document.getElementById("idEdtBearerToken").value;
-      activeAcountId = document.getElementById("idEdtAccountId").value;
-      if (bearerToken === "" || activeAcountId === "") {
+      var bearerToken = document.getElementById("idEdtBearerToken").value;
+      var acountId = document.getElementById("idEdtAccountId").value;
+      if (bearerToken === "" || acountId === "") {
         console.error("Bearer token and account ID must have a value");
         return;
       }
-      console.log("Requesting instrument list for account " + activeAcountId + " with token " + bearerToken);
+      console.log("Requesting instrument list for account " + acountId + " with token " + bearerToken);
 
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
-      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + activeAcountId, {
-        "headers": {
-          "Accept": "application/json; charset=utf-8",
-          "Authorization": "Bearer " + bearerToken
+      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + acountId, {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: "Bearer " + bearerToken
         }
       })
-        .then(function (response) {
+        .then(function(response) {
           if (!response.ok) {
             console.error(response.statusText);
           }
           return response.json();
         })
-        .then(function (jsonResponse) {
+        .then(function(jsonResponse) {
           console.log(jsonResponse);
           displayInstrumentList(jsonResponse);
           // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
           scheduleTokenRefresh(30 * 60);
         })
-        .catch(function (error) {
+        .catch(function(error) {
           console.log(error);
         });
     }
@@ -208,7 +207,7 @@ script:
      */
     function displayQuote(row, values) {
       var firstColumn = "B";
-      return Excel.run(function (context) {
+      return Excel.run(function(context) {
         var indicesSheet = context.workbook.worksheets.getItem("Indices");
         var range;
         var rangeDesc;
@@ -222,7 +221,7 @@ script:
             range.values = [[values[i]]];
           }
         }
-        return context.sync().catch(function (error) {
+        return context.sync().catch(function(error) {
           console.error(error);
         });
       });
@@ -273,10 +272,10 @@ script:
         }
       }
       Promise.resolve()
-        .then(function () {
+        .then(function() {
           displayQuote(row, values);
         })
-        .catch(function (error) {
+        .catch(function(error) {
           // In a production add-in, you'd want to notify the user through your add-in's UI.
           console.error(error);
         });
@@ -291,28 +290,29 @@ script:
       var options = {
         // accessTokenFactory not called every request, so refresh token doesn't work.
         // Waiting for bug fix https://github.com/aspnet/SignalR/pull/1880
-        "accessTokenFactory": function () {
-          return bearerToken;
+        accessTokenFactory: function() {
+          return document.getElementById("idEdtBearerToken").value;
         }
       };
+      var accountId = document.getElementById("idEdtAccountId").value;
       console.log("Setup streamer connection");
       connection = new signalR.HubConnectionBuilder()
-        .withUrl(streamerUrl + "?accountNumber=" + activeAcountId, options)
+        .withUrl(streamerUrl + "?accountNumber=" + accountId, options)
         .configureLogging(signalR.LogLevel.Information) // Use Trace for trouble shooting
         .build();
       console.log("Configure the callback for quote events");
-      connection.on("Quote", function (quoteMessagesObject) {
+      connection.on("Quote", function(quoteMessagesObject) {
         processQuoteUpdates(quoteMessagesObject);
       });
       console.log("Configure the callback for disconnect");
-      connection.onclose(function () {
+      connection.onclose(function() {
         isConnectionActive = false;
         console.log("The connection has been closed.");
       });
       console.log("Start connection");
       connection
         .start()
-        .then(function () {
+        .then(function() {
           var i;
           var instrumentIdsArray = [];
           for (i = 0; i < instruments.length; i += 1) {
@@ -321,8 +321,8 @@ script:
           console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
           console.log(instrumentIdsArray);
           connection
-            .invoke("SubscribeQuotes", activeAcountId, instrumentIdsArray, "TopOfBook")
-            .then(function (subscriptionResponse) {
+            .invoke("SubscribeQuotes", accountId, instrumentIdsArray, "TopOfBook")
+            .then(function(subscriptionResponse) {
               console.log(subscriptionResponse);
               if (subscriptionResponse.isSucceeded) {
                 console.log(
@@ -333,11 +333,11 @@ script:
                 console.error("Something went wrong. Is the account ID valid?");
               }
             })
-            .catch(function (error) {
+            .catch(function(error) {
               console.error(error);
             });
         })
-        .catch(function (error) {
+        .catch(function(error) {
           console.error(error);
         });
     }
@@ -362,39 +362,7 @@ script:
     stopStreamingUpdates);
   language: typescript
 template:
-  content: |-
-    <label>Token: Bearer
-      <input
-        id="idEdtBearerToken"
-        type="text"
-        value=""
-        placeholder="Paste token here" />
-      <a href="https://www.basement.nl/binck/demo.html" target="_blank">Get token</a>
-    </label>
-    <br />
-    <label>Refresh token:
-      <input
-        id="idEdtRefreshToken"
-        type="text"
-        value=""
-        placeholder="Paste (optional) refresh token" />
-    </label>
-    <br /><label>Account ID:
-      <input
-        id="idEdtAccountId"
-        type="text"
-        value=""
-        placeholder="Enter account ID" />
-    </label>
-    <br />
-    <br />
-    <button id="idBtnGetIndices">Get indices</button>
-    <br />
-    <br />
-    <button id="idBtnGetStream">Start streaming quotes</button>
-    <br />
-    <br />
-    <button id="idBtnStop">Stop streaming updates</button>
+  content: "<label>Token: Bearer\n  <input\n    id=\"idEdtBearerToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste token here\" />\n  <a href=\"https://www.basement.nl/binck/demo.html\" target=\"_blank\">Get token</a>\n</label>\n<br />\n<label>Refresh token:\n  <input\n    id=\"idEdtRefreshToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste (optional) refresh token\" />\n</label>\n<label>Select country for refresh:\n  <select id=\"idCbxCountry\">\n\t  <option value=\"binckbeapi\">Belgium (binck.be)</option>\n\t  <option value=\"binckfrapi\">France (binck.fr)</option>\n    <option value=\"binckitapi\">Italy (binck.it)</option>\n\t  <option value=\"bincknlapi\">Netherlands (binck.nl)</option>\n  </select>\n</label>\n<br />\n<label>Account ID:\n  <input\n    id=\"idEdtAccountId\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Enter account ID\" />\n</label>\n<br />\n<br />\n<button id=\"idBtnGetIndices\">Get indices</button>\n<br />\n<br />\n<button id=\"idBtnGetStream\">Start streaming quotes</button>\n<br />\n<br />\n<button id=\"idBtnStop\">Stop streaming updates</button>"
   language: html
 style:
   content: ''
