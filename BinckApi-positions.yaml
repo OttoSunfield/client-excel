@@ -1,0 +1,369 @@
+name: Binck Realtime Quotes
+description: Connect to Binck API and get streaming quotes for positions.
+host: EXCEL
+api_set: {}
+script:
+  content: >
+    /*
+     * This is an example on how to use the Binck API in Excel.
+     * Showcase: Request a set of instruments and get streaming quotes.
+     *
+     * Documentation on the Excel API:
+     * https://docs.microsoft.com/en-us/office/dev/add-ins/reference/overview/excel-add-ins-reference-overview?view=office-js
+     * Token can be retrieved here: https://www.basement.nl/binck/demo.html
+     */
+
+    var apiUrl = "https://api.binck.com/api/v1";
+
+    var streamerUrl = "https://realtime.binck.com/stream/v1";
+
+    var serverUrl = "https://www.basement.nl/binck/server/token-excel.php";
+
+    // Developers can test software on sandbox using these URLs:
+
+    // var apiUrl = "https://api.sandbox.binck.com/api/v1";
+
+    // var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
+
+
+    var positions;
+
+    var bearerTokenRefreshTimer = null;
+
+    var connection;
+
+    var isConnectionActive = false;
+
+
+    /**
+     * This is an example of displaying instruments in Excel.
+     * @param {Object} data The response of the rest call.
+     * @return {void}
+     */
+    function displayPositions(data) {
+      var i;
+      var cellValuesArray = [];
+      var rowCount;
+      console.log("Positions successfully retrieved:");
+      console.log(data);
+      positions = data.positionsCollection.positions;
+      for (i = 0; i < positions.length; i += 1) {
+        // This is the list shown in column A:
+        cellValuesArray[cellValuesArray.length] = [positions[i].instrument.name];
+      }
+      rowCount = cellValuesArray.length + 1; // Include header
+      return Excel.run(function(context) {
+        var positionsSheet = context.workbook.worksheets.getItemOrNullObject("Positions");
+        return context.sync().then(function() {
+          var optionsTable;
+          var range;
+          if (positionsSheet.isNullObject) {
+            // The worksheet doesn't exist - create
+            console.log("Create new worksheet with name 'Positions'");
+            positionsSheet = context.workbook.worksheets.add("Positions");
+            optionsTable = positionsSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
+            optionsTable.name = "instrumentsTable";
+            optionsTable.showBandedRows = false;
+            optionsTable.getHeaderRowRange().values = [["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
+            // Add names:
+            range = positionsSheet.getRange("A2..A" + rowCount);
+            range.values = cellValuesArray;
+            positionsSheet.getUsedRange().format.autofitColumns();
+            positionsSheet.getUsedRange().format.autofitRows();
+            positionsSheet.activate();
+          }
+          positionsSheet.activate(); // Bring to front
+        });
+      });
+    }
+
+
+    /**
+     * Extend the subscription of the streamer, when a new token is received.
+     * @return {void}
+     */
+    function refreshTokenOfStreamer() {
+      if (isConnectionActive) {
+        connection
+          .invoke("ExtendSubscriptions", document.getElementById("idEdtBearerToken").value)
+          .then(function() {
+            console.log("Streamer subscription extended.");
+          })
+          .catch(function(error) {
+            console.error(error);
+          });
+      }
+    }
+
+
+    /**
+     * The realm is required for extending the session.
+     * @param {number} secondsFromNow token shuld be refreshed after this time (seconds).
+     * @return {string} Can be binckbeapi binckfrapi binckitapi bincknlapi.
+     */
+    function getRealm() {
+      var element = document.getElementById("idCbxCountry");
+      var realm = element.options[element.selectedIndex].value;
+      console.log("Using realm " + realm);
+      return realm;
+    }
+
+
+    /**
+     * Tokens expire in general after one hour. If a refresh token is added, the token can be refreshed, for max. 24 hours.
+     * @param {number} secondsFromNow token shuld be refreshed after this time (seconds).
+     * @return {void}
+     */
+    function scheduleTokenRefresh(secondsFromNow) {
+      if (bearerTokenRefreshTimer === null) {
+        console.log("Setting refresh timer. Trigger in " + secondsFromNow + " seconds.");
+        // Do this only one time..
+        bearerTokenRefreshTimer = window.setTimeout(function() {
+          var data = {
+            requestType: "refreshToken",
+            realm: getRealm(),
+            refreshToken: document.getElementById("idEdtRefreshToken").value
+          };
+          if (data.refreshToken === "") {
+            console.log("No refresh token found, so no token refresh can be requested.");
+          } else {
+            console.log(new Date().toLocaleTimeString() + " - Requesting token refresh..");
+            fetch(serverUrl, {
+              headers: {
+                Accept: "application/json; charset=utf-8",
+                "Content-Type": "application/json; charset=utf-8"
+              },
+              body: JSON.stringify(data),
+              method: "POST"
+            })
+              .then(function(response) {
+                if (!response.ok) {
+                  console.error(response);
+                }
+                return response.json();
+              })
+              .then(function(responseJson) {
+                console.log(responseJson);
+                document.getElementById("idEdtBearerToken").value = responseJson.access_token;
+                document.getElementById("idEdtRefreshToken").value = responseJson.refresh_token;
+                refreshTokenOfStreamer();
+                // Schedule next refresh one minute before new token expires:
+                scheduleTokenRefresh(responseJson.expires_in - 60);
+                console.log("Token has been refreshed.");
+              })
+              .catch(function(error) {
+                console.error(error);
+              });
+          }
+        }, secondsFromNow * 1000);
+      }
+    }
+
+
+    /**
+     * This is an example of getting instruments from the Api. Instrument list is used, but this might as well be the positions or pending orders.
+     * @return {void}
+     */
+    function requestPositions() {
+      var bearerToken = document.getElementById("idEdtBearerToken").value;
+      var acountId = document.getElementById("idEdtAccountId").value;
+      if (bearerToken === "" || acountId === "") {
+        console.error("Bearer token and account ID must have a value");
+        return;
+      }
+      console.log("Requesting positions for account " + acountId + " with token " + bearerToken);
+
+      // Documentation of this request: https://developers.binck.com/#operation--accounts--accountNumber--positions-get
+      fetch(apiUrl + "/accounts/" + acountId + "/positions", {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: "Bearer " + bearerToken
+        }
+      })
+        .then(function(response) {
+          if (!response.ok) {
+            console.error(response.statusText);
+          }
+          return response.json();
+        })
+        .then(function(jsonResponse) {
+          console.log(jsonResponse);
+          displayPositions(jsonResponse);
+          // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
+          scheduleTokenRefresh(30 * 60);
+        })
+        .catch(function(error) {
+          console.log(error);
+        });
+    }
+
+
+    /**
+     * Update the price of an instrument.
+     * @param {number} row The row in the Excel grid.
+     * @param {Array[number]} values The new values for that row.
+     * @return {void}
+     */
+    function displayQuote(row, values) {
+      var firstColumn = "B";
+      return Excel.run(function(context) {
+        var positionsSheet = context.workbook.worksheets.getItem("Positions");
+        var range;
+        var rangeDesc;
+        var i;
+        positionsSheet.activate(); // Bring to front
+        for (i = 0; i < values.length; i += 1) {
+          // Update only cells which have new values:
+          if (values[i] !== undefined) {
+            rangeDesc = String.fromCharCode(firstColumn.charCodeAt(0) + i) + row;
+            range = positionsSheet.getRange(rangeDesc);
+            range.values = [[values[i]]];
+          }
+        }
+        return context.sync().catch(function(error) {
+          console.error(error);
+        });
+      });
+    }
+
+
+    /**
+     * Parse incoming event and determine places to update.
+     * @param {Object} quoteMessagesObject The new prices.
+     * @return {void}
+     */
+    function processQuoteUpdates(quoteMessagesObject) {
+      var quoteMessage;
+      var row;
+      var values = [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+      var i;
+      for (i = 0; i < positions.length; i += 1) {
+        if (positions[i].instrument.id === quoteMessagesObject.id) {
+          row = i + 2; // Zero based, skip header
+          break;
+        }
+      }
+      for (i = 0; i < quoteMessagesObject.qt.length; i += 1) {
+        quoteMessage = quoteMessagesObject.qt[i];
+        switch (quoteMessage.typ) {
+          case "lst":
+          case "thp":
+            values[0] = parseFloat(quoteMessage.prc); // Last
+            values[6] = new Date(quoteMessage.dt); // Date time
+            break;
+          case "opn":
+            values[3] = parseFloat(quoteMessage.prc); // Open
+            break;
+          case "cls":
+            values[4] = parseFloat(quoteMessage.prc); // Close
+            break;
+          case "hgh":
+            values[1] = parseFloat(quoteMessage.prc); // High
+            break;
+          case "low":
+            values[2] = parseFloat(quoteMessage.prc); // Low
+            break;
+          case "vol":
+            if (quoteMessage.vol !== 0) {
+              values[5] = parseInt(quoteMessage.vol, 10); // Cumulative volume
+            }
+            break;
+        }
+      }
+      Promise.resolve()
+        .then(function() {
+          displayQuote(row, values);
+        })
+        .catch(function(error) {
+          // In a production add-in, you'd want to notify the user through your add-in's UI.
+          console.error(error);
+        });
+    }
+
+
+    /**
+     * Request a streaming connection for quote updates using signalR.
+     * @return {void}
+     */
+    function setupStreamerConnection() {
+      var options = {
+        // accessTokenFactory not called every request, so refresh token doesn't work.
+        // Waiting for bug fix https://github.com/aspnet/SignalR/pull/1880
+        accessTokenFactory: function() {
+          return document.getElementById("idEdtBearerToken").value;
+        }
+      };
+      var accountId = document.getElementById("idEdtAccountId").value;
+      console.log("Setup streamer connection");
+      connection = new signalR.HubConnectionBuilder()
+        .withUrl(streamerUrl + "?accountNumber=" + accountId, options)
+        .configureLogging(signalR.LogLevel.Information) // Use Trace for trouble shooting
+        .build();
+      console.log("Configure the callback for quote events");
+      connection.on("Quote", function(quoteMessagesObject) {
+        processQuoteUpdates(quoteMessagesObject);
+      });
+      console.log("Configure the callback for disconnect");
+      connection.onclose(function() {
+        isConnectionActive = false;
+        console.log("The connection has been closed.");
+      });
+      console.log("Start connection");
+      connection
+        .start()
+        .then(function() {
+          var i;
+          var instrumentIdsArray = [];
+          for (i = 0; i < positions.length; i += 1) {
+            instrumentIdsArray[instrumentIdsArray.length] = positions[i].instrument.id;
+          }
+          console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
+          console.log(instrumentIdsArray);
+          connection
+            .invoke("SubscribeQuotes", accountId, instrumentIdsArray, "TopOfBook")
+            .then(function(subscriptionResponse) {
+              console.log(subscriptionResponse);
+              if (subscriptionResponse.isSucceeded) {
+                console.log(
+                  "Quote subscribe succeeded, number of subscribed instruments is now: " + subscriptionResponse.subcount
+                );
+                isConnectionActive = true;
+              } else {
+                console.error("Something went wrong. Is the account ID valid?");
+              }
+            })
+            .catch(function(error) {
+              console.error(error);
+            });
+        })
+        .catch(function(error) {
+          console.error(error);
+        });
+    }
+
+
+    /**
+     * Disconnect from the streamer. Per token, only one streaming connection is allowed, so it is important to disconnect.
+     * @return {void}
+     */
+    function stopStreamingUpdates() {
+      connection.stop();
+    }
+
+
+    document.getElementById("idBtnGetPositions").addEventListener("click",
+    requestPositions);
+
+    document.getElementById("idBtnGetStream").addEventListener("click",
+    setupStreamerConnection);
+
+    document.getElementById("idBtnStop").addEventListener("click",
+    stopStreamingUpdates);
+  language: typescript
+template:
+  content: "<label>Token: Bearer\n  <input\n    id=\"idEdtBearerToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste token here\" />\n  <a href=\"https://www.basement.nl/binck/demo.html\" target=\"_blank\">Get token</a>\n</label>\n<br />\n<label>Refresh token:\n  <input\n    id=\"idEdtRefreshToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste (optional) refresh token\" />\n</label>\n<label>Select country for refresh:\n  <select id=\"idCbxCountry\">\n\t  <option value=\"binckbeapi\">Belgium (binck.be)</option>\n\t  <option value=\"binckfrapi\">France (binck.fr)</option>\n    <option value=\"binckitapi\">Italy (binck.it)</option>\n\t  <option value=\"bincknlapi\">Netherlands (binck.nl)</option>\n  </select>\n</label>\n<br />\n<label>Account ID:\n  <input\n    id=\"idEdtAccountId\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Enter account ID\" />\n</label>\n<br />\n<br />\n<button id=\"idBtnGetPositions\">Get positions</button>\n<br />\n<br />\n<button id=\"idBtnGetStream\">Start streaming quotes</button>\n<br />\n<br />\n<button id=\"idBtnStop\">Stop streaming updates</button>"
+  language: html
+style:
+  content: ''
+  language: css
+libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js"
