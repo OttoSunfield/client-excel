@@ -26,7 +26,7 @@ script:
     // var streamerUrl = "https://realtime.sandbox.binck.com/stream/v1";
 
 
-    var instruments;
+    var instruments = [];
 
     var bearerTokenRefreshTimer = null;
 
@@ -34,45 +34,51 @@ script:
 
     var isConnectionActive = false;
 
+    var sheetName = "Indices";
+
 
     /**
      * This is an example of displaying instruments in Excel.
      * @param {Object} data The response of the rest call.
      * @return {void}
      */
-    function displayInstrumentList(data) {
+    function displayInstruments(data) {
       var i;
       var cellValuesArray = [];
       var rowCount;
       console.log("Instruments successfully retrieved:");
       console.log(data);
-      instruments = data.instrumentsCollection.instruments;
-      for (i = 0; i < instruments.length; i += 1) {
+      for (i = 0; i < data.instrumentsCollection.instruments.length; i += 1) {
+        // Add the instruments to the lookup list:
+        instruments.push({
+          name: data.instrumentsCollection.instruments[i].name,
+          id: data.instrumentsCollection.instruments[i].id
+        });
         // This is the list shown in column A:
-        cellValuesArray[cellValuesArray.length] = [instruments[i].name];
+        cellValuesArray.push([data.instrumentsCollection.instruments[i].name]);
       }
       rowCount = cellValuesArray.length + 1; // Include header
       return Excel.run(function(context) {
-        var indicesSheet = context.workbook.worksheets.getItemOrNullObject("Indices");
+        var instrumentsSheet = context.workbook.worksheets.getItemOrNullObject(sheetName);
         return context.sync().then(function() {
           var optionsTable;
           var range;
-          if (indicesSheet.isNullObject) {
+          if (instrumentsSheet.isNullObject) {
             // The worksheet doesn't exist - create
-            console.log("Create new worksheet with name 'Indices'");
-            indicesSheet = context.workbook.worksheets.add("Indices");
-            optionsTable = indicesSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
+            console.log("Create new worksheet with name " + sheetName);
+            instrumentsSheet = context.workbook.worksheets.add(sheetName);
+            optionsTable = instrumentsSheet.tables.add("A1:H" + rowCount, true /*hasHeaders*/);
             optionsTable.name = "instrumentsTable";
             optionsTable.showBandedRows = false;
             optionsTable.getHeaderRowRange().values = [["Name", "Last", "High", "Low", "Open", "Close", "Volume", "Time"]];
             // Add names:
-            range = indicesSheet.getRange("A2..A" + rowCount);
+            range = instrumentsSheet.getRange("A2..A" + rowCount);
             range.values = cellValuesArray;
-            indicesSheet.getUsedRange().format.autofitColumns();
-            indicesSheet.getUsedRange().format.autofitRows();
-            indicesSheet.activate();
+            instrumentsSheet.getUsedRange().format.autofitColumns();
+            instrumentsSheet.getUsedRange().format.autofitRows();
+            instrumentsSheet.activate();
           }
-          indicesSheet.activate(); // Bring to front
+          instrumentsSheet.activate(); // Bring to front
         });
       });
     }
@@ -175,6 +181,7 @@ script:
 
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
+      // Retrieve positions: https://developers.binck.com/#operation--accounts--accountNumber--positions-get
       fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + acountId, {
         headers: {
           Accept: "application/json; charset=utf-8",
@@ -189,7 +196,7 @@ script:
         })
         .then(function(jsonResponse) {
           console.log(jsonResponse);
-          displayInstrumentList(jsonResponse);
+          displayInstruments(jsonResponse);
           // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
           scheduleTokenRefresh(30 * 60);
         })
@@ -208,16 +215,16 @@ script:
     function displayQuote(row, values) {
       var firstColumn = "B";
       return Excel.run(function(context) {
-        var indicesSheet = context.workbook.worksheets.getItem("Indices");
+        var instrumentsSheet = context.workbook.worksheets.getItem(sheetName);
         var range;
         var rangeDesc;
         var i;
-        indicesSheet.activate(); // Bring to front
+        instrumentsSheet.activate(); // Bring to front
         for (i = 0; i < values.length; i += 1) {
           // Update only cells which have new values:
           if (values[i] !== undefined) {
             rangeDesc = String.fromCharCode(firstColumn.charCodeAt(0) + i) + row;
-            range = indicesSheet.getRange(rangeDesc);
+            range = instrumentsSheet.getRange(rangeDesc);
             range.values = [[values[i]]];
           }
         }
@@ -298,7 +305,7 @@ script:
       console.log("Setup streamer connection");
       connection = new signalR.HubConnectionBuilder()
         .withUrl(streamerUrl + "?accountNumber=" + accountId, options)
-        .configureLogging(signalR.LogLevel.Information) // Use Trace for trouble shooting
+        .configureLogging(signalR.LogLevel.Trace) // Use Information to limit amount of logging
         .build();
       console.log("Configure the callback for quote events");
       connection.on("Quote", function(quoteMessagesObject) {
@@ -316,7 +323,7 @@ script:
           var i;
           var instrumentIdsArray = [];
           for (i = 0; i < instruments.length; i += 1) {
-            instrumentIdsArray[instrumentIdsArray.length] = instruments[i].id;
+            instrumentIdsArray.push(instruments[i].id);
           }
           console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
           console.log(instrumentIdsArray);
@@ -367,4 +374,4 @@ template:
 style:
   content: ''
   language: css
-libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.0/dist/browser/signalr.min.js"
+libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.2/dist/browser/signalr.min.js"
