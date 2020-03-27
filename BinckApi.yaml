@@ -374,4 +374,4 @@ template:
 style:
   content: ''
   language: css
-libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdn.jsdelivr.net/npm/@microsoft/signalr@3.1.2/dist/browser/signalr.min.js"
+libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/3.1.3/signalr.min.js\r\nhttps://cdnjs.cloudflare.com/ajax/libs/fetch/3.0.0/fetch.min.js\r\n"
