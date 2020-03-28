@@ -36,10 +36,54 @@ script:
 
     var sheetName = "Indices";
 
+    var realm = "";
+
+
+    /**
+     * This is an example of displaying the accounts. In general this is the first request to the API.
+     * @param {Object} data The response of the REST call.
+     * @return {void}
+     */
+    function displayAccounts(data) {
+      var i;
+      var cbxAccountNumbers = document.getElementById("idCbxAccountNumbers");
+      var option;
+      console.log("Accounts successfully retrieved:");
+      console.log(data);
+      for (i = cbxAccountNumbers.options.length - 1; i >= 0; i -= 1) {
+        cbxAccountNumbers.remove(i);
+      }
+      for (i = 0; i < data.accountsCollection.accounts.length; i += 1) {
+        // Add the accounts to the combo box:
+        option = document.createElement("option");
+        option.text = data.accountsCollection.accounts[i].name;
+        option.value = data.accountsCollection.accounts[i].number;
+        cbxAccountNumbers.add(option);
+      }
+      // Get the correct realm, used for retrieving the refresh token
+      switch (data.accountsCollection.accounts[0].iban.charAt(0)) {
+        case "B":
+          realm = "binckbeapi";
+          break;
+        case "F":
+          realm = "binckfrapi";
+          break;
+        case "I":
+          realm = "binckitapi";
+          break;
+        case "N":
+          realm = "bincknlapi";
+          break;
+        default:
+          console.error("Unable to determine realm from IBAN: " + data.accountsCollection.accounts[0].iban);
+      }
+      console.log("Found realm " + realm);
+    }
+
 
     /**
      * This is an example of displaying instruments in Excel.
-     * @param {Object} data The response of the rest call.
+     * @param {Object} data The response of the REST call.
      * @return {void}
      */
     function displayInstruments(data) {
@@ -103,15 +147,14 @@ script:
 
 
     /**
-     * The realm is required for extending the session.
-     * @param {number} secondsFromNow token shuld be refreshed after this time (seconds).
-     * @return {string} Can be binckbeapi binckfrapi binckitapi bincknlapi.
+     * The account number is required, because different accounts might have different streaming subscriptions.
+     * @return {string} The selected account number.
      */
-    function getRealm() {
-      var element = document.getElementById("idCbxCountry");
-      var realm = element.options[element.selectedIndex].value;
-      console.log("Using realm " + realm);
-      return realm;
+    function getAccountNumber() {
+      var element = document.getElementById("idCbxAccountNumbers");
+      var accountNumber = element.options[element.selectedIndex].value;
+      console.log("Using account number " + accountNumber);
+      return accountNumber;
     }
 
 
@@ -127,7 +170,7 @@ script:
         bearerTokenRefreshTimer = window.setTimeout(function() {
           var data = {
             requestType: "refreshToken",
-            realm: getRealm(),
+            realm: realm,
             refreshToken: document.getElementById("idEdtRefreshToken").value
           };
           if (data.refreshToken === "") {
@@ -167,22 +210,57 @@ script:
 
 
     /**
+     * This is an example of getting the available accounts. This is used to validate the token and determine the realm, required for the token refresh.
+     * @return {void}
+     */
+    function requestAccounts() {
+      var bearerToken = document.getElementById("idEdtBearerToken").value;
+      if (bearerToken === "") {
+        console.error("Bearer token must have a value");
+        return;
+      }
+      console.log("Requesting accounts with token " + bearerToken);
+      // Documentation of this request: https://developers.binck.com/#operation--accounts-get
+      fetch(apiUrl + "/accounts", {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: "Bearer " + bearerToken
+        }
+      })
+        .then(function(response) {
+          if (!response.ok) {
+            console.error(response.statusText);
+          }
+          return response.json();
+        })
+        .then(function(jsonResponse) {
+          console.log(jsonResponse);
+          displayAccounts(jsonResponse);
+          // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
+          scheduleTokenRefresh(30 * 60);
+        })
+        .catch(function(error) {
+          console.log(error);
+        });
+    }
+
+
+    /**
      * This is an example of getting instruments from the Api. Instrument list is used, but this might as well be the positions or pending orders.
      * @return {void}
      */
     function requestInstrumentList() {
       var bearerToken = document.getElementById("idEdtBearerToken").value;
-      var acountId = document.getElementById("idEdtAccountId").value;
-      if (bearerToken === "" || acountId === "") {
-        console.error("Bearer token and account ID must have a value");
+      var acountNumber = getAccountNumber();
+      if (bearerToken === "") {
+        console.error("Bearer token must have a value");
         return;
       }
-      console.log("Requesting instrument list for account " + acountId + " with token " + bearerToken);
-
+      console.log("Requesting instrument list for account " + acountNumber + " with token " + bearerToken);
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
       // Retrieve positions: https://developers.binck.com/#operation--accounts--accountNumber--positions-get
-      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + acountId, {
+      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + acountNumber, {
         headers: {
           Accept: "application/json; charset=utf-8",
           Authorization: "Bearer " + bearerToken
@@ -197,8 +275,6 @@ script:
         .then(function(jsonResponse) {
           console.log(jsonResponse);
           displayInstruments(jsonResponse);
-          // Refresh the token after 30 minutes. Token lifetime is 60 minutes.
-          scheduleTokenRefresh(30 * 60);
         })
         .catch(function(error) {
           console.log(error);
@@ -301,10 +377,10 @@ script:
           return document.getElementById("idEdtBearerToken").value;
         }
       };
-      var accountId = document.getElementById("idEdtAccountId").value;
+      var accountNumber = getAccountNumber();
       console.log("Setup streamer connection");
       connection = new signalR.HubConnectionBuilder()
-        .withUrl(streamerUrl + "?accountNumber=" + accountId, options)
+        .withUrl(streamerUrl + "?accountNumber=" + accountNumber, options)
         .configureLogging(signalR.LogLevel.Trace) // Use Information to limit amount of logging
         .build();
       console.log("Configure the callback for quote events");
@@ -328,7 +404,7 @@ script:
           console.log("Subscribing to quotes for " + instrumentIdsArray.length + " instruments");
           console.log(instrumentIdsArray);
           connection
-            .invoke("SubscribeQuotes", accountId, instrumentIdsArray, "TopOfBook")
+            .invoke("SubscribeQuotes", accountNumber, instrumentIdsArray, "TopOfBook")
             .then(function(subscriptionResponse) {
               console.log(subscriptionResponse);
               if (subscriptionResponse.isSucceeded) {
@@ -337,7 +413,7 @@ script:
                 );
                 isConnectionActive = true;
               } else {
-                console.error("Something went wrong. Is the account ID valid?");
+                console.error("Something went wrong. Is the account number valid?");
               }
             })
             .catch(function(error) {
@@ -359,6 +435,9 @@ script:
     }
 
 
+    document.getElementById("idBtnGetAccounts").addEventListener("click",
+    requestAccounts);
+
     document.getElementById("idBtnGetIndices").addEventListener("click",
     requestInstrumentList);
 
@@ -369,9 +448,9 @@ script:
     stopStreamingUpdates);
   language: typescript
 template:
-  content: "<label>Token: Bearer\n  <input\n    id=\"idEdtBearerToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste token here\" />\n  <a href=\"https://www.basement.nl/binck/demo.html\" target=\"_blank\">Get token</a>\n</label>\n<br />\n<label>Refresh token:\n  <input\n    id=\"idEdtRefreshToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste (optional) refresh token\" />\n</label>\n<label>Select country for refresh:\n  <select id=\"idCbxCountry\">\n\t  <option value=\"binckbeapi\">Belgium (binck.be)</option>\n\t  <option value=\"binckfrapi\">France (binck.fr)</option>\n    <option value=\"binckitapi\">Italy (binck.it)</option>\n\t  <option value=\"bincknlapi\">Netherlands (binck.nl)</option>\n  </select>\n</label>\n<br />\n<label>Account ID:\n  <input\n    id=\"idEdtAccountId\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Enter account ID\" />\n</label>\n<br />\n<br />\n<button id=\"idBtnGetIndices\">Get indices</button>\n<br />\n<br />\n<button id=\"idBtnGetStream\">Start streaming quotes</button>\n<br />\n<br />\n<button id=\"idBtnStop\">Stop streaming updates</button>"
+  content: "<label>Token: Bearer\n  <input\n    id=\"idEdtBearerToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste token here\" />\n  <a href=\"https://www.basement.nl/binck/demo.html\" target=\"_blank\">Get token</a>\n</label>\n<br />\n<label>Refresh token:\n  <input\n    id=\"idEdtRefreshToken\"\n    type=\"text\"\n    value=\"\"\n    placeholder=\"Paste (optional) refresh token\" />\n</label>\n<br /><br />\n<button id=\"idBtnGetAccounts\">Validate token</button>\n<br /><br />\n<label>Account to use:\n  <select id=\"idCbxAccountNumbers\">\n\t  <option value=\"-\">Will be available after token validation</option>\n  </select>\n</label>\n<br />\n<br />\n<button id=\"idBtnGetIndices\">Get indices</button>\n<br />\n<br />\n<button id=\"idBtnGetStream\">Start streaming quotes</button>\n<br />\n<br />\n<button id=\"idBtnStop\">Stop streaming updates</button>"
   language: html
 style:
   content: ''
   language: css
-libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/3.1.3/signalr.min.js\r\nhttps://cdnjs.cloudflare.com/ajax/libs/fetch/3.0.0/fetch.min.js\r\n"
+libraries: "https://appsforoffice.microsoft.com/lib/1/hosted/office.js\r\n@types/office-js\r\n\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.min.css\r\noffice-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css\r\n\r\ncore-js@2.4.1/client/core.min.js\r\n@types/core-js\r\n\r\nhttps://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/3.1.3/signalr.min.js\r\nhttps://cdnjs.cloudflare.com/ajax/libs/fetch/2.0.4/fetch.min.js\r\n"
