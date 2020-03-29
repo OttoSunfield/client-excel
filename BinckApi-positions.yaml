@@ -379,7 +379,7 @@ script:
       console.log("Setup streamer connection");
       connection = new signalR.HubConnectionBuilder()
         .withUrl(streamerUrl + "?accountNumber=" + accountNumber, options)
-        .configureLogging(signalR.LogLevel.Trace) // Use Information to limit amount of logging
+        .configureLogging(signalR.LogLevel.Information) // Use Trace to get more logging
         .build();
       console.log("Configure the callback for quote events");
       connection.on("Quote", function(quoteMessagesObject) {
