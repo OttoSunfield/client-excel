@@ -251,16 +251,16 @@ script:
      */
     function requestInstrumentList() {
       var bearerToken = document.getElementById("idEdtBearerToken").value;
-      var acountNumber = getAccountNumber();
+      var accountNumber = getAccountNumber();
       if (bearerToken === "") {
         console.error("Bearer token must have a value");
         return;
       }
-      console.log("Requesting instrument list for account " + acountNumber + " with token " + bearerToken);
+      console.log("Requesting instrument list for account " + accountNumber + " with token " + bearerToken);
       // Documentation of this request: https://developers.binck.com/#operation--instruments-lists--id--get
       // Other list is amsterdamAEXIndex, see documentation for more.
       // Retrieve positions: https://developers.binck.com/#operation--accounts--accountNumber--positions-get
-      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + acountNumber, {
+      fetch(apiUrl + "/instruments/lists/internationalIndices?accountNumber=" + accountNumber, {
         headers: {
           Accept: "application/json; charset=utf-8",
           Authorization: "Bearer " + bearerToken
